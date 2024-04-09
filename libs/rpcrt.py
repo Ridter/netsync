@@ -919,6 +919,7 @@ class DCERPC_v5(DCERPC):
         self.__cipher = None
         self.__confounder = b''
         self.__gss = None
+        self.__aseandsha = False
 
     def set_session_key(self, session_key, aesandsha = False):
         self.__sessionKey = session_key
