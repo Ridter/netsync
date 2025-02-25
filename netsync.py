@@ -3,6 +3,7 @@ import sys
 import argparse
 import logging
 import re
+import traceback
 from dns import resolver
 from binascii import unhexlify, hexlify
 
@@ -123,6 +124,7 @@ class NetSync:
             logging.info("Authenticated successfully! have these capabilities: {}".format(support_str))
             return True
         except Exception as e:
+            traceback.print_exc()
             logging.error(str(e))
         return False
 
@@ -152,7 +154,7 @@ class NetSync:
     def NetrServerAuthenticate(self, dce):
         try:
             # impacket not support NrpcNegotiateFlags.SupportsAESAndSHA2 yet, fuck it.
-            negotiateFlags =  NrpcNegotiateFlags.DoesNotRequireValidationLevel2 | NrpcNegotiateFlags.SupportsConcurrentRpcCalls  | NrpcNegotiateFlags.SupportsCrossForestTrusts | NrpcNegotiateFlags.SupportsGenericPassThroughAuthentication | NrpcNegotiateFlags.SupportsNetrLogonGetDomainInfo | NrpcNegotiateFlags.SupportsNetrLogonSendToSam | NrpcNegotiateFlags.SupportsNetrServerPasswordSet2 | NrpcNegotiateFlags.SupportsRC4 | NrpcNegotiateFlags.SupportsRefusePasswordChange | NrpcNegotiateFlags.SupportsRodcPassThroughToDifferentDomains | NrpcNegotiateFlags.SupportsSecureRpc| NrpcNegotiateFlags.SupportsStrongKeys  | NrpcNegotiateFlags.SupportsTransitiveTrusts
+            negotiateFlags =  NrpcNegotiateFlags.DoesNotRequireValidationLevel2 | NrpcNegotiateFlags.SupportsConcurrentRpcCalls  | NrpcNegotiateFlags.SupportsCrossForestTrusts | NrpcNegotiateFlags.SupportsGenericPassThroughAuthentication | NrpcNegotiateFlags.SupportsNetrLogonGetDomainInfo | NrpcNegotiateFlags.SupportsNetrLogonSendToSam | NrpcNegotiateFlags.SupportsNetrServerPasswordSet2 | NrpcNegotiateFlags.SupportsRC4 | NrpcNegotiateFlags.SupportsRefusePasswordChange | NrpcNegotiateFlags.SupportsRodcPassThroughToDifferentDomains | NrpcNegotiateFlags.SupportsSecureRpc| NrpcNegotiateFlags.SupportsStrongKeys  | NrpcNegotiateFlags.SupportsTransitiveTrusts | NrpcNegotiateFlags.SupportsAESAndSHA2
             clientChallenge = b'12345678'
             resp = nrpc.hNetrServerReqChallenge(dce, self.__dcName, self.__machineName , clientChallenge)
             serverChallenge = resp['ServerChallenge']
@@ -160,12 +162,12 @@ class NetSync:
             logging.debug("Server Challenge: %s" % hexlify(serverChallenge).decode('utf-8'))
             if negotiateFlags & NrpcNegotiateFlags.SupportsAESAndSHA2 == NrpcNegotiateFlags.SupportsAESAndSHA2:
                 logging.debug("Using AES key")
-                self.__aesandsha = True
+                isAES = True
                 self.sessionKey = nrpc.ComputeSessionKeyAES('', clientChallenge, serverChallenge, bnthash)
                 self.clientStoredCredential = nrpc.ComputeNetlogonCredentialAES(clientChallenge, self.sessionKey)
             elif negotiateFlags & NrpcNegotiateFlags.SupportsStrongKeys == NrpcNegotiateFlags.SupportsStrongKeys:  
+                isAES = False
                 logging.debug("Using strong key")
-                self.__aesandsha = False
                 self.sessionKey = nrpc.ComputeSessionKeyStrongKey('', clientChallenge, serverChallenge, bnthash)
                 self.clientStoredCredential = nrpc.ComputeNetlogonCredential(clientChallenge, self.sessionKey)
             else:
@@ -187,7 +189,10 @@ class NetSync:
         dce.set_auth_type(RPC_C_AUTHN_NETLOGON)
         dce.set_auth_level(RPC_C_AUTHN_LEVEL_PKT_PRIVACY)
         dce2 = dce.alter_ctx(nrpc.MSRPC_UUID_NRPC)
-        dce2.set_session_key(self.sessionKey, self.__aesandsha)
+        dce2.set_session_key(self.sessionKey)
+        dce2.set_aes(isAES)
+        self.__aesandsha = isAES
+
         self.__dce = dce2
         return True
 
